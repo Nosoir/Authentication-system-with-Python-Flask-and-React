@@ -11,6 +11,7 @@ from admin import setup_admin
 from models import db, Users, Bookmarks, Characters, Planets
 #from models import Person
 import json
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -279,6 +280,64 @@ def delete_favorite(favorite_id):
 #               -fIN de DELETE-
 # 
 
+# 
+#               -Inicio de JWT-
+# 
+
+# Setup the Flask-JWT-Extended extension
+app.config["JWT_SECRET_KEY"] = "super-secret"  # Change this!
+jwt = JWTManager(app)
+
+# Create a route to authenticate your users and return JWTs. The
+# create_access_token() function is used to actually generate the JWT.
+@app.route("/login", methods=["POST"])
+def login():
+    user_name = request.json.get("user_name", None)
+    password = request.json.get("password", None)
+
+    user = Users.query.filter_by(user_name=user_name).first()
+
+    if user is None:
+        raise APIException('Bad username or password', status_code=401)
+
+    if user_name != user.user_name or password != user.password:
+        raise APIException('Bad username or password', status_code=404)
+
+    access_token = create_access_token(identity=user_name)
+    response_body = {
+        "access_token": access_token,
+        "user": user.serialize()
+    }
+    return jsonify(response_body)
+
+
+# Protect a route with jwt_required, which will kick out requests
+# without a valid JWT present.
+@app.route("/profile", methods=["GET"])
+@jwt_required()
+def protected():
+    # Access the identity of the current user with get_jwt_identity
+    current_user = get_jwt_identity()
+    
+    user = Users.query.filter_by(user_name=current_user).first()
+
+    if user is None:
+        raise APIException('El usuario no existe', status_code=404)
+
+    response_body = {
+        "user": user.serialize()
+    }
+
+    return jsonify(response_body), 200
+
+
+
+# 
+#               -fIN de JWT-
+# 
+
+
+# Este comando siempre va a lo último
 # this only runs if `$ python src/main.py` is executed
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 3000))
